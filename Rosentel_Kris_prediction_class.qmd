@@ -1,0 +1,83 @@
+---
+title: "Classification Prediction Problem"
+subtitle: "Data Science 3 with R (STAT 301-3)"
+author: "Kris Rosentel"
+
+format:
+  html:
+    toc: true
+    embed-resources: true
+    code-fold: show
+    link-external-newwindow: true
+    
+execute:
+  warning: false
+
+from: markdown+emoji  
+---
+
+## Github Repo Link
+
+::: {.callout-note icon="false"}
+## Github Link for Replication
+
+[https://github.com/STAT301-3-2023SP/prediction-classification-krisrosentel.git](https://github.com/STAT301-3-2023SP/prediction-classification-krisrosentel.git)
+
+:::
+
+## Summary
+
+The goal of this prediction problem was to build a predictive classification model that achieves an ROC AUC above .58314 for a masked dataset with a binary response variable. My best model was an ensemble that included MARS, elastic net, MLP, BART, and discriminant analysis models. It achieved an ROC AUC of .6252 when applied to the Kaggle test data. In this memo, I describe the process of feature engineering, model tuning, and constructing the ensemble.
+
+## Feature Engineering & Recipes
+
+**Variable selection:** To select possible variables to include in the model, I conducted a random forest with all predictors for a random subset of 30% of the training observations. I then computed the variable importance metric and generated three lists. The first list included 50 of the best predictors. I iteratively removed predictors that had a high correlation (\>.95) with other predictors and replaced them with the next best predictors from the list until I had 50 variables with no correlation above the .95 level. The second list included the 30 best predictors among the selected subset of 50. The third list consisted of the 300 best predictors from the random forest model. These lists were used in different model recipes.
+
+**Recipes:** I created three recipes, which are described below: 
+
+- *Recipe 1:* The first recipe included the 50 best predictors. I imputed missing variables using KNN (all had less than 20% missing), used a YeoJohnson transformation for all numeric predictors, and normalized all predictors. 
+
+- *Recipe 2:* The second recipe built on the first and added all possible two-way interactions between the 30 best predictors. Main terms for the next best twenty predictors were also included in the model, but these variables were not included in any of the interactions. 
+
+- *Recipe 3:* The third recipe included similar steps to Recipe 2. However, this model also added an additional 250 predictors, which were included in a PCA that reduced them into 80 components. The original 50 predictors and the interactions among the best 30 were retained in the model as well, but were not included in the PCA. This recipe also had a slight difference from the prior two in that only predictors with high levels of skewness were transformed using YeoJohnson. 
+
+## Model Tuning
+
+I fit and tuned 9 models using the training data. I tuned the models using cross validation with 5 folds and 3 repeats to find the best values of relevant hyper-parameters. The table below lists each model, the recipe used, the computation time to tune, and the test ROC AUC of each model using the best tuning parameters from cross validation.
+
+```{r}
+#| echo: false
+library(pacman)
+p_load(tidyverse, kableExtra)
+
+load("results/memo_objs.rda") # load
+
+models_table %>% 
+  rename("ROC AUC" = "ROC_AUC of Best Tuning") %>% 
+    kable(caption = "Tuned Models: Recipes, Run Time, and Performance", align = "lccc") %>% 
+  kable_styling(font_size = 12)
+```
+
+## Ensemble
+
+I fit an ensemble model using some of the best performing models from above. I included both elastic net models, the BART model, the bagged MLP, the bagged MARS, and the flexible discriminant analysis as candidates. Overall, there were 135 candidate models in the stack. 
+
+## Runner-Up Model
+
+The second best model was the bagged MARS model. This model achieved an ROC AUC of .6113 in the test data. The selected model used 20 bags, had 42 terms, and a product degree of 3.  
+
+## Best Model
+
+The best model was an ensemble with 8 members and a penalty term of .000001. This model achieved an ROC AUC of .6252. The final model included 2 bagged MARS models, 3 negative binomial elastic net models, 1 bagged MLP, 1 BART model, and 1 flexible discriminant analysis model. The table and plot below describe the ensemble model, providing the stacking coefficients and the tuned hyper-parameters for the member models.
+
+```{r}
+#| echo: false
+#| fig-width: 9
+
+ens_table %>% 
+  kable(caption = "Member Model Coefficients and Parameters", align = "lcccccccccc") %>% 
+  kable_styling(font_size = 12) %>% 
+  column_spec(c(1, 11), bold = T)  
+
+ens_plot
+```
